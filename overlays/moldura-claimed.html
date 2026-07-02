@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Moldura de Camera do Claimed</title>
+
+<!-- Única dependência externa: Google Fonts (Fredoka, a display do Claimed).
+     display=block evita o "flash" de fonte trocando no meio da live. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=block" rel="stylesheet" />
+
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CLAIMED — Moldura de câmera pra OBS (browser source)
+   ──────────────────────────────────────────────────────────────────────
+   • Fundo 100% transparente. A CÂMERA é uma source SEPARADA, ATRÁS desta.
+   • O "furo" central (4:3) é transparente — a câmera aparece por ele.
+   • Aqui só desenhamos: moldura fina + brackets de canto + aba (ticker)
+     embaixo + decoração temática por modo do jogo.
+   • Cores e nomes dos modos vieram do código do Claimed (não inventados).
+   • Tudo anima com transform/opacity (barato). Alvo >= 30fps no CEF do OBS.
+
+   ▸ EDITAR RÁPIDO: veja o bloco CONFIG no fim do arquivo (modos, cores,
+     decoração e tempos). Query params: ?hole=78  ?speed=3600  ?tag=SEUCANAL
+     ?debug=1 (mostra o furo pra alinhar a câmera)  ?mode=arena (trava 1 modo).
+
+   ▸ ASSET: o boss Ferumbras (modo ULTIMATO) é o sprite REAL do Claimed
+     (apps/claimed/web/assets/final-stand/ferumbras_west.png, virado p/ oeste),
+     embutido em base64 pra manter o arquivo self-contained. Não é inventado.
+   ══════════════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: transparent;            /* OBS pinta branco se isto faltar */
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Fredoka', system-ui, sans-serif;
+  color: #F2F2FA;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:root {
+  /* Identidade Claimed */
+  --ink:    #0A0A10;   /* preto neobrutalism      */
+  --panel:  #0F0F17;   /* superfície escura       */
+  --gold:   #FFD84A;   /* amarelo-ouro assinatura */
+  --text:   #F2F2FA;
+
+  /* Sprite REAL do Ferumbras (oeste/virado pra esquerda). Base64 embutido
+     pra não depender de arquivo externo no OBS. Fonte: apps/claimed. */
+  --ferumbras: url('data:image/png;base64,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');
+
+  /* Fração do browser source que o furo ocupa (0–1). Furo 4:3 centralizado.
+     0.80 => num source 800x600 o furo fica 640x480 (webcam nativa). Ajuste
+     fino por ?hole=NN (em %). */
+  --fit: 0.80;
+
+  /* Cor do modo atual (o JS atualiza estas variáveis a cada troca). */
+  --mc:      #FFD84A;                 /* cor principal do modo   */
+  --mc-glow: rgba(255,216,74,.45);    /* brilho suave            */
+  --mc-soft: rgba(255,216,74,.16);    /* preenchimento fantasma  */
+  --mc-line: rgba(255,216,74,.60);    /* linhas/bordas           */
+  --mc-deep: #8a742a;                 /* variante escura         */
+
+  /* Escala das DECORAÇÕES (só decoração; furo/moldura/cantos/ticker NÃO usam).
+     ?ds=N deixa TODAS as decorações N× maiores sem mexer na moldura. O JS
+     reescreve --u = N*1vmin e --ds = N no boot. Em ds=1 fica 100% idêntico ao
+     original (--u = 1vmin, --ds = 1). Decos usam calc(N * var(--u)). */
+  --ds: 1;
+  --u:  1vmin;
+
+  /* Dimensões proporcionais (vmin escala junto com o tamanho da source). */
+  --frame-th: clamp(2px, 0.45vmin, 5px);
+  --radius:   clamp(10px, 2.3vmin, 28px);
+
+  /* Tempos (o JS lê --xfade pra sincronizar). */
+  --xfade: 900ms;
+}
+
+/* Palco: centraliza a moldura. Overlay nunca recebe clique. */
+#stage {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+
+/* ── MOLDURA (o furo é o interior transparente desta caixa) ────────────── */
+#frame {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  /* Encaixa um 4:3 no viewport respeitando --fit, seja qual for o formato. */
+  width: min(calc(var(--fit) * 100vw), calc(var(--fit) * 100vh * 4 / 3));
+  border-radius: var(--radius);
+  overflow: visible;                  /* decoração pode extravasar a borda */
+}
+
+/* Anel estrutural escuro — garante leitura sobre qualquer câmera/tela. */
+#frame::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  border: var(--frame-th) solid var(--ink);
+  box-shadow:
+    inset 0 0 0 1.4px rgba(0,0,0,.75),          /* aresta interna nítida  */
+    inset 0 0 0 2.6px rgba(255,255,255,.05),     /* fio de luz sutil       */
+    0 1vmin 2.4vmin rgba(0,0,0,.42);             /* profundidade (drop)    */
+  pointer-events: none;
+}
+
+/* Anel de acento na cor do modo + brilho externo suave (discreto). */
+#frame::after {
+  content: '';
+  position: absolute; inset: calc(-1 * var(--frame-th));
+  border-radius: calc(var(--radius) + var(--frame-th));
+  border: 1.6px solid var(--mc-line);
+  box-shadow:
+    0 0 1.6vmin -0.2vmin var(--mc-glow),
+    0 0 4vmin -1.4vmin var(--mc-glow);
+  opacity: .85;
+  transition: border-color var(--xfade) ease, box-shadow var(--xfade) ease;
+  pointer-events: none;
+}
+
+/* ── Brackets de canto (vibe HUD esports, premium e discreto) ──────────── */
+.corner {
+  position: absolute;
+  width: clamp(14px, 2.8vmin, 36px);
+  height: clamp(14px, 2.8vmin, 36px);
+  border: clamp(2px, 0.42vmin, 4px) solid var(--mc);
+  opacity: .95;
+  transition: border-color var(--xfade) ease;
+  filter: drop-shadow(0 0 0.4vmin var(--mc-glow));
+}
+.corner.tl { top: calc(-0.4 * var(--frame-th)); left:  calc(-0.4 * var(--frame-th)); border-right: 0; border-bottom: 0; border-top-left-radius:     calc(var(--radius) * .55); }
+.corner.tr { top: calc(-0.4 * var(--frame-th)); right: calc(-0.4 * var(--frame-th)); border-left:  0; border-bottom: 0; border-top-right-radius:    calc(var(--radius) * .55); }
+.corner.bl { bottom: calc(-0.4 * var(--frame-th)); left:  calc(-0.4 * var(--frame-th)); border-right: 0; border-top: 0; border-bottom-left-radius:  calc(var(--radius) * .55); }
+.corner.br { bottom: calc(-0.4 * var(--frame-th)); right: calc(-0.4 * var(--frame-th)); border-left:  0; border-top: 0; border-bottom-right-radius: calc(var(--radius) * .55); }
+
+/* ── Tag superior (nome do canal, sutil) ──────────────────────────────── */
+.toptag {
+  position: absolute; top: 0; left: 50%;
+  transform: translate(-50%, -140%);
+  display: flex; align-items: center; gap: 0.9vmin;
+  padding: 0.75vmin 2.1vmin;
+  background: var(--ink);
+  border: 1.6px solid rgba(255,255,255,.10);
+  border-radius: 999px;
+  box-shadow: 0 0.5vmin 0 rgba(0,0,0,.45);
+  white-space: nowrap;
+}
+.toptag .dot {
+  width: 1vmin; height: 1vmin; border-radius: 50%;
+  background: var(--mc);
+  box-shadow: 0 0 0.8vmin var(--mc-glow);
+  transition: background var(--xfade) ease, box-shadow var(--xfade) ease;
+  animation: livePulse 2.2s ease-in-out infinite;
+}
+.toptag .txt {
+  font-weight: 600;
+  font-size: clamp(11px, 2.05vmin, 21px);
+  letter-spacing: 0.2em;
+  color: rgba(242,242,250,.62);
+  text-transform: uppercase;
+}
+@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ── Aba inferior (ticker) — CLAIMED · <MODO> ─────────────────────────── */
+#ticker {
+  position: absolute; bottom: 0; left: 50%;
+  transform: translate(-50%, calc(100% + 1.7vmin));
+  display: flex; align-items: center; gap: 1.3vmin;
+  padding: 1.15vmin 3vmin;
+  background: var(--ink);
+  border: clamp(1.5px, 0.32vmin, 3px) solid var(--mc-line);
+  border-radius: 999px;
+  /* Sombra dura deslocada (assinatura neobrutalism) + brilho suave do modo */
+  box-shadow: 0 0.7vmin 0 rgba(0,0,0,.55), 0 0 1.6vmin -0.4vmin var(--mc-glow);
+  white-space: nowrap;
+  transition: border-color var(--xfade) ease, box-shadow var(--xfade) ease;
+}
+.tk-brand {
+  font-weight: 700;
+  font-size: clamp(14px, 2.75vmin, 30px);
+  letter-spacing: 0.12em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.tk-sep {
+  width: 1.2vmin; height: 1.2vmin;
+  background: var(--mc);
+  transform: rotate(45deg);
+  border-radius: 1.5px;
+  transition: background var(--xfade) ease;
+}
+.tk-mode {
+  font-weight: 700;
+  font-size: clamp(14px, 2.75vmin, 30px);
+  letter-spacing: 0.15em;
+  color: var(--mc);
+  text-transform: uppercase;
+  transition: color var(--xfade) ease;
+  will-change: transform, opacity;
+}
+
+/* ── Camada de decoração (por modo) ───────────────────────────────────── */
+#deco { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.deco-set {
+  position: absolute; inset: 0;
+  color: var(--mc);                    /* SVGs usam currentColor */
+  opacity: 0;
+  transition: opacity 480ms ease;
+  overflow: visible;
+}
+.deco-set.in { opacity: 1; }
+
+/* --- Trilho horizontal reutilizável (reel da Roleta) — só transform --- */
+.d-track { position: absolute; left: 0; right: 0; height: calc(9 * var(--u)); pointer-events: none; overflow: visible; }
+.d-inner { position: absolute; top: 0; left: 0; width: 200%; height: 100%; display: flex; }
+.d-half  { width: 50%; height: 100%; display: flex; align-items: center; justify-content: space-around; }
+@keyframes trackMove { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* --- CORRIDA: bolinhas caindo pelas laterais (física em JS) --- */
+.race-ball {
+  position: absolute; top: 0; left: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, rgba(255,255,255,.92), var(--mc) 46%, var(--mc-deep) 100%);
+  box-shadow: 0 0 calc(0.6 * var(--u)) var(--mc-glow), 0 calc(0.35 * var(--u)) 0 rgba(0,0,0,.3);
+  will-change: transform;
+}
+
+/* --- ROLETA: reel de prêmios (ambiente) + ponteiro + sorteio central --- */
+.reelbox { width: calc(7.2 * var(--u)); height: calc(7.2 * var(--u)); display: grid; place-items: center; filter: drop-shadow(0 0 calc(0.6 * var(--u)) var(--mc-glow)); }
+.reelbox svg { width: 100%; height: 100%; }
+.reel-ambient { opacity: .5; }         /* reel de fundo, discreto durante o sorteio */
+.reel-pointer {
+  position: absolute; left: 50%; bottom: -0.2vmin;   /* posição: ancorada à borda (não escala) */
+  width: 0; height: 0;
+  border-left: calc(1.6 * var(--u)) solid transparent;
+  border-right: calc(1.6 * var(--u)) solid transparent;
+  border-bottom: calc(2.1 * var(--u)) solid var(--mc);
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 calc(0.6 * var(--u)) var(--mc-glow));
+  animation: pointerBob 1.4s ease-in-out infinite;
+}
+@keyframes pointerBob { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(calc(-0.5 * var(--u))); } }
+/* Palco do sorteio: fica ABAIXO da moldura (nunca sobre o rosto). */
+.win-stage {
+  position: absolute; left: 50%; bottom: -6vmin;      /* posição: abaixo da moldura (não escala) */
+  width: calc(10 * var(--u)); height: calc(10 * var(--u));
+  display: grid; place-items: center;
+  transform: translateX(-50%);
+}
+.winbox { position: absolute; width: calc(8.6 * var(--u)); height: calc(8.6 * var(--u)); display: grid; place-items: center; filter: drop-shadow(0 0 calc(0.8 * var(--u)) var(--mc-glow)); will-change: transform, opacity; }
+.winbox svg { width: 100%; height: 100%; transition: color 220ms ease, filter 220ms ease; }
+.winbox.won svg { color: var(--gold); filter: drop-shadow(0 0 calc(1.1 * var(--u)) rgba(255,216,74,.85)); }
+.spark {
+  position: absolute; left: 50%; top: 50%;
+  width: calc(1.3 * var(--u)); height: calc(1.3 * var(--u)); border-radius: 50%;
+  margin: calc(-0.65 * var(--u)) 0 0 calc(-0.65 * var(--u));
+  background: radial-gradient(circle, #FFF3C4, var(--gold) 55%, transparent 72%);
+  box-shadow: 0 0 calc(0.7 * var(--u)) rgba(255,216,74,.8);
+  will-change: transform, opacity;
+}
+
+/* --- ARENA: armas espalhadas nas laterais/cantos (várias, leves) --- */
+.weapon { position: absolute; display: grid; place-items: center; opacity: .85; filter: drop-shadow(0 0 calc(0.7 * var(--u)) var(--mc-glow)); animation: wBob 3.6s ease-in-out infinite; }
+.weapon svg { width: 100%; height: 100%; }
+@keyframes wBob { 0%,100% { transform: translateY(0) rotate(var(--rot,0deg)); } 50% { transform: translateY(calc(-0.9 * var(--u))) rotate(calc(var(--rot,0deg) + 4deg)); } }
+
+/* --- ULTIMATO: brasas (ambiente) + boss Ferumbras lançando magia --- */
+.ember {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, #FFE9A8, var(--mc) 55%, transparent 72%);
+  animation: emberRise linear infinite;
+}
+@keyframes emberRise {   /* brasas curtas, lambendo a borda de baixo */
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  18%  { opacity: .95; }
+  100% { transform: translateY(calc(-4 * var(--u))) scale(.4); opacity: 0; }
+}
+.ferumbras {
+  position: absolute; right: -4vmin; bottom: -1vmin;  /* posição: canto inferior direito, na base (não escala) */
+  z-index: 5;                                         /* POR CIMA da moldura (borda/acento) */
+  width: calc(14 * var(--u)); height: calc(14 * var(--u));
+  transform: translateY(0);
+  background: var(--ferumbras) center / contain no-repeat;
+  image-rendering: pixelated;                        /* pixel art nítido */
+  filter: drop-shadow(0 0 calc(1.1 * var(--u)) rgba(255,60,60,.5)) drop-shadow(0 calc(0.4 * var(--u)) calc(0.4 * var(--u)) rgba(0,0,0,.45));
+  opacity: .96;
+  animation: bossFloat 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes bossFloat {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(calc(-1.1 * var(--u))); }
+}
+.ferumbras.casting { animation: bossCast 520ms ease-out; }
+@keyframes bossCast {   /* recuo pra trás (direita) e volta, ao lançar */
+  0%   { transform: translateY(0) translateX(0)      scale(1); }
+  35%  { transform: translateY(0) translateX(calc(1.6 * var(--u))) scale(1.06); }
+  100% { transform: translateY(0) translateX(0)      scale(1); }
+}
+.fproj {
+  position: absolute; z-index: 5;   /* POR CIMA da moldura, junto do boss */
+  width: calc(2.4 * var(--u)); height: calc(2.4 * var(--u)); border-radius: 50%;
+  background: radial-gradient(circle at 40% 38%, #fff, #ff5ada 30%, #a01bd6 62%, #6a0f9e 100%);
+  box-shadow: 0 0 calc(1.4 * var(--u)) rgba(200,60,255,.85), 0 0 calc(2.8 * var(--u)) rgba(160,20,214,.55);
+  will-change: transform, opacity;
+}
+.fproj::after {           /* rastro apontando pra trás (direita) */
+  content: ''; position: absolute; top: 50%; left: 55%;
+  width: calc(5.5 * var(--u)); height: calc(1 * var(--u)); transform: translateY(-50%);
+  background: linear-gradient(90deg, rgba(200,60,255,0), rgba(200,60,255,.5));
+  border-radius: 999px; filter: blur(1px);
+}
+
+/* --- SORTEIO: tickets flutuando + confete (inalterado) --- */
+.ticket { position: absolute; width: calc(9.2 * var(--u)); height: calc(5.4 * var(--u)); opacity: .9; filter: drop-shadow(0 0 calc(0.7 * var(--u)) var(--mc-glow)); animation: tkFloat ease-in-out infinite; }
+.ticket svg { width: 100%; height: 100%; }
+@keyframes tkFloat {
+  0%,100% { transform: translateY(0) rotate(var(--rot,0deg)); }
+  50%     { transform: translateY(calc(-1.4 * var(--u))) rotate(calc(var(--rot,0deg) - 4deg)); }
+}
+.confetti { position: absolute; width: calc(1.6 * var(--u)); height: calc(1.6 * var(--u)); background: var(--mc); border-radius: 1.5px; opacity: .8; animation: confRise linear infinite; }
+@keyframes confRise {   /* sobe ACIMA da borda de cima (nunca sobre o rosto) */
+  0%   { transform: translateY(0) rotate(0deg);      opacity: 0; }
+  15%  { opacity: .85; }
+  100% { transform: translateY(calc(-7 * var(--u))) rotate(320deg); opacity: 0; }
+}
+
+/* --- TRIVIA: chips A/B/C/D + interrogação (inalterado) --- */
+.chip {
+  position: absolute;
+  width: calc(5.4 * var(--u)); height: calc(5.4 * var(--u));
+  display: grid; place-items: center;
+  background: var(--mc-soft);
+  border: 2.2px solid var(--mc-line);
+  border-radius: calc(1.3 * var(--u));
+  color: var(--mc);
+  font-weight: 700; font-size: calc(3 * var(--u));
+  box-shadow: 0 calc(0.4 * var(--u)) 0 rgba(0,0,0,.4);
+  animation: chipBob 3.2s ease-in-out infinite;
+}
+.chip.hot { animation: chipBob 3.2s ease-in-out infinite, chipHot 4.8s ease-in-out infinite; }
+@keyframes chipBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(calc(-0.8 * var(--u))); } }
+@keyframes chipHot { 0%,72%,100% { border-color: var(--mc-line); box-shadow: 0 calc(0.4 * var(--u)) 0 rgba(0,0,0,.4); } 82% { border-color: var(--mc); box-shadow: 0 calc(0.4 * var(--u)) 0 rgba(0,0,0,.4), 0 0 calc(1.4 * var(--u)) var(--mc-glow); } }
+.qmark {
+  position: absolute;
+  font-weight: 700; font-size: calc(9 * var(--u)); line-height: 1;
+  color: var(--mc-soft);
+  -webkit-text-stroke: 2.2px var(--mc-line);
+  animation: qFloat 4s ease-in-out infinite;
+}
+@keyframes qFloat { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(calc(-1 * var(--u))) rotate(4deg); } }
+
+/* --- CLÁSSICO: palavras dando a volta pelo perímetro (offset-path) --- */
+.pword {
+  position: absolute; top: 0; left: 0;
+  offset-rotate: 0deg;                 /* mantém o texto na horizontal */
+  offset-anchor: 50% 50%;
+  font-weight: 700;
+  /* clamp mantém o tamanho original em ds=1; * var(--ds) escala no pequeno.
+     (calc(N*var(--u)) não venceria o piso de 13px do clamp na câmera pequena.) */
+  font-size: calc(clamp(13px, 2.7vmin, 24px) * var(--ds));
+  letter-spacing: 0.14em;
+  color: var(--gold);                  /* ouro, como pedido */
+  opacity: .72;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 0 calc(0.9 * var(--u)) var(--mc-glow), 0 calc(0.2 * var(--u)) calc(0.35 * var(--u)) rgba(0,0,0,.55);
+  will-change: offset-distance;
+}
+@keyframes perimeter { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+
+/* ── Guia de alinhamento (só com ?debug=1) ────────────────────────────── */
+#holeguide { position: absolute; inset: 0; display: none; }
+#holeguide.on { display: grid; place-items: center; }
+#holeguide::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,216,74,.08) 0 12px, transparent 12px 24px);
+  border-radius: calc(var(--radius) - var(--frame-th));
+}
+#holeguide .lbl {
+  font-weight: 700; font-size: 2.4vmin; letter-spacing: .1em;
+  color: var(--gold); background: rgba(10,10,16,.75);
+  padding: 1vmin 2vmin; border-radius: 999px; z-index: 1;
+}
+
+/* ── Reduced motion: suaviza (não desliga) ────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .d-inner  { animation-duration: 28s !important; }
+  .ember, .confetti { animation-duration: 6s !important; }
+  .weapon, .ticket, .chip, .qmark, .reel-pointer, .toptag .dot {
+    animation-duration: 6s !important;
+  }
+}
+</style>
+</head>
+
+<body>
+  <div id="stage">
+    <div id="frame">
+      <!-- Decoração temática (injetada por JS) — fica ATRÁS da chrome -->
+      <div id="deco"></div>
+
+      <!-- Brackets de canto (acima da decoração) -->
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+
+      <!-- Tag superior (nome do canal) -->
+      <div class="toptag" id="toptag">
+        <span class="dot"></span>
+        <span class="txt" id="toptag-txt"></span>
+      </div>
+
+      <!-- Guia pra alinhar a câmera (?debug=1) -->
+      <div id="holeguide"><span class="lbl">CÂMERA 4:3</span></div>
+
+      <!-- Aba inferior: CLAIMED · MODO -->
+      <div id="ticker">
+        <span class="tk-brand">CLAIMED</span>
+        <span class="tk-sep"></span>
+        <span class="tk-mode" id="tk-mode">CLÁSSICO</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ════════════════════════════════════════════════════════════════════
+     CONFIG — edite aqui. Cada modo: { key, name, color, deco }.
+     ▸ color e name vieram do código do Claimed (web/style.css --mc + tabs).
+     ▸ deco é o estilo de decoração (mapeado à mecânica de cada modo).
+     ▸ Pra reordenar o ciclo, é só trocar a ordem do array.
+     ════════════════════════════════════════════════════════════════════ */
+  const MODES = [
+    { key: 'classic',     name: 'CLÁSSICO', color: '#FFD84A', deco: 'letters' }, // palavras no perímetro
+    { key: 'race',        name: 'CORRIDA',  color: '#FF7A00', deco: 'bounce'  }, // bolinhas caindo/quicando
+    { key: 'roulette',    name: 'ROLETA',   color: '#FE2C55', deco: 'draw'    }, // reel sorteia e abre prêmio
+    { key: 'giveaway',    name: 'SORTEIO',  color: '#25C2F0', deco: 'tickets' }, // tickets + confete
+    { key: 'arena',       name: 'ARENA',    color: '#E0533C', deco: 'weapons' }, // armas espalhadas
+    { key: 'trivia',      name: 'TRIVIA',   color: '#8A63E8', deco: 'quiz'    }, // chips A/B/C/D
+    { key: 'final_stand', name: 'ULTIMATO', color: '#FF3B3B', deco: 'boss'    }, // Ferumbras lançando magia
+  ];
+
+  // Palavras curtas de adivinhar (vocabulário Tibia do Claimed) — modo Clássico.
+  const GUESS_WORDS = ['DEMON', 'DRAGON', 'SWORD', 'RUNE', 'MANA', 'KNIGHT',
+                       'BOSS', 'MAGE', 'SHIELD', 'GOLD', 'POTION', 'QUEST'];
+
+  // Tempos (ms). ?speed= sobrescreve o ciclo.
+  const params   = new URLSearchParams(location.search);
+  let   CYCLE_MS = parseInt(params.get('speed'), 10) || 3600; // por modo
+  const XFADE_MS = 900;                                       // troca de cor
+  const reduce   = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) CYCLE_MS = Math.round(CYCLE_MS * 1.6);
+
+  /* ── Escala das decorações (?ds=N) — só afeta a camada de decoração ──── */
+  // Usado na source PEQUENA (CEF 425x319) pra deixar as decos legíveis. Na
+  // grande, sem ?ds (ou ?ds=1), fica idêntico ao original. Faixa sã 0.5–3.
+  let DS = parseFloat(params.get('ds'));
+  if (isNaN(DS) || DS <= 0) DS = 1;
+  DS = Math.min(3, Math.max(0.5, DS));
+  document.documentElement.style.setProperty('--u', DS.toFixed(3) + 'vmin');
+  document.documentElement.style.setProperty('--ds', DS.toFixed(3));
+
+  /* ── Aplicar params de ajuste fino ─────────────────────────────────── */
+  const holePct = parseFloat(params.get('hole'));
+  if (!isNaN(holePct) && holePct > 20 && holePct <= 100) {
+    document.documentElement.style.setProperty('--fit', (holePct / 100).toFixed(3));
+  }
+  const tag = params.has('tag') ? params.get('tag') : '';
+  const toptag = document.getElementById('toptag');
+  if (tag) document.getElementById('toptag-txt').textContent = tag;
+  else toptag.style.display = 'none';
+  if (params.get('debug') === '1') document.getElementById('holeguide').classList.add('on');
+
+  /* ── Helpers de cor ────────────────────────────────────────────────── */
+  function hexToRgb(hex) {
+    const h = hex.replace('#', '');
+    return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) };
+  }
+  const rgba = (c, a) => `rgba(${c.r},${c.g},${c.b},${a})`;
+  // Escurece misturando com o ink (#0A0A10).
+  function deepen(c, t) {
+    const ink = { r:10, g:10, b:16 };
+    const mix = (a,b) => Math.round(a + (b - a) * t);
+    return `rgb(${mix(c.r,ink.r)},${mix(c.g,ink.g)},${mix(c.b,ink.b)})`;
+  }
+
+  /* ── Mini fábrica de DOM ───────────────────────────────────────────── */
+  function el(tag, cls, style, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (style) for (const k in style) n.style.setProperty(k, style[k]);
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+
+  // Comprimento em "unidades de decoração": calc(n * --u). Em ds=1 => n vmin.
+  // Usado nos estilos inline gerados por JS (offsets/tamanhos das decos), pra
+  // que ?ds= também escale o que não está no <style>.
+  const uv = n => 'calc(' + n + ' * var(--u))';
+
+  // Medidas atuais da moldura (px). Usado por decos que precisam de física
+  // ou geometria real (Corrida, Clássico, Ultimato).
+  const frameEl = document.getElementById('frame');
+  function frameRect() {
+    const r = frameEl.getBoundingClientRect();
+    return { w: r.width || 640, h: r.height || 480 };
+  }
+  // Caminho de retângulo arredondado no perímetro (levemente pra fora da
+  // moldura) pras palavras do modo Clássico orbitarem sem tocar o rosto.
+  function perimeterPath(w, h, r, m) {
+    const x0 = -m, y0 = -m, x1 = w + m, y1 = h + m, rr = Math.max(1, r + m);
+    return `M ${x0+rr} ${y0} H ${x1-rr} A ${rr} ${rr} 0 0 1 ${x1} ${y0+rr} `
+         + `V ${y1-rr} A ${rr} ${rr} 0 0 1 ${x1-rr} ${y1} H ${x0+rr} `
+         + `A ${rr} ${rr} 0 0 1 ${x0} ${y1-rr} V ${y0+rr} A ${rr} ${rr} 0 0 1 ${x0+rr} ${y0} Z`;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     DECORAÇÕES — cada builder devolve um .deco-set com poucos elementos,
+     colados nas bordas (nunca sobre o rosto). Só transform/opacity.
+     Builders com loop próprio (JS) anexam set._cleanup pra parar ao trocar.
+     ════════════════════════════════════════════════════════════════════ */
+
+  // SVGs (usam currentColor => herdam a cor do modo)
+  const SVG = {
+    sword:
+      '<svg viewBox="0 0 24 64" aria-hidden="true"><path d="M12 3 L15 41 L12 47 L9 41 Z" fill="currentColor"/>' +
+      '<rect x="4" y="44" width="16" height="3.6" rx="1.8" fill="currentColor"/>' +
+      '<rect x="10.6" y="47.6" width="2.8" height="9" fill="currentColor"/>' +
+      '<circle cx="12" cy="58.5" r="2.4" fill="currentColor"/></svg>',
+    bow:
+      '<svg viewBox="0 0 48 64" aria-hidden="true"><path d="M15 6 Q35 32 15 58" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M15 6 L15 58" stroke="currentColor" stroke-width="1.4" opacity=".65"/>' +
+      '<path d="M9 32 L40 32" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<path d="M40 32 l-6 -4 M40 32 l-6 4" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>',
+    staff:
+      '<svg viewBox="0 0 24 64" aria-hidden="true"><rect x="10.6" y="17" width="2.8" height="43" rx="1.4" fill="currentColor"/>' +
+      '<path d="M12 2 l2.3 5.1 5.4 .6 -4 3.6 1.1 5.4 -4.8 -2.8 -4.8 2.8 1.1 -5.4 -4 -3.6 5.4 -.6 Z" fill="currentColor"/></svg>',
+    gift:
+      '<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="6" y="15" width="28" height="21" rx="2.5" fill="currentColor" opacity=".18" stroke="currentColor" stroke-width="2"/>' +
+      '<rect x="4" y="9" width="32" height="8" rx="2" fill="currentColor" opacity=".3" stroke="currentColor" stroke-width="2"/>' +
+      '<rect x="17.5" y="9" width="5" height="27" fill="currentColor" opacity=".9"/>' +
+      '<path d="M20 9 q-7 -7 -9 -1 q3 -1 9 1 q6 -2 9 -1 q-2 -6 -9 1 Z" fill="currentColor"/></svg>',
+    ticket:
+      '<svg viewBox="0 0 44 26" aria-hidden="true"><path d="M4 3 H40 V9 A3 3 0 0 0 40 15 V23 H4 V15 A3 3 0 0 0 4 9 Z" fill="currentColor" opacity=".16" stroke="currentColor" stroke-width="1.7"/>' +
+      '<line x1="31" y1="6" x2="31" y2="20" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2.4" opacity=".7"/>' +
+      '<path d="M15 8.5 l1.5 3.4 3.7 .3 -2.8 2.4 .9 3.6 -3.3 -2 -3.3 2 .9 -3.6 -2.8 -2.4 3.7 -.3 Z" fill="currentColor" opacity=".9"/></svg>'
+  };
+
+  // Trilho horizontal (reel) — 2 metades iguais, translateX(-50%).
+  function buildTrack(vpos, itemFactory, countPerHalf, dur) {
+    const track = el('div', 'd-track', { [vpos.side]: vpos.val });
+    const inner = el('div', 'd-inner', { animation: `trackMove ${dur} linear infinite` });
+    for (let h = 0; h < 2; h++) {
+      const half = el('div', 'd-half');
+      for (let i = 0; i < countPerHalf; i++) half.appendChild(itemFactory(i));
+      inner.appendChild(half);
+    }
+    track.appendChild(inner);
+    return track;
+  }
+
+  const DECO = {
+    // ══ CORRIDA — bolinhas caindo pelas laterais, quicando (física real) ══
+    // Duas faixas estreitas nas bordas esquerda/direita. Gravidade + rebote
+    // nas paredes da faixa (efeito plinko). Nunca cruzam o centro/rosto.
+    bounce() {
+      const set = el('div', 'deco-set');
+      const { w, h } = frameRect();
+      const k    = w / 600;                        // escala p/ manter proporção
+      const pad  = w * 0.015;
+      const laneW = w * 0.085;                      // largura de cada faixa
+      const d    = Math.max(9, w * 0.024) * DS;     // diâmetro da bolinha (?ds escala)
+      const lanes = [
+        { x0: pad,               x1: pad + laneW },              // esquerda
+        { x0: w - pad - laneW,   x1: w - pad }                   // direita
+      ];
+      const G    = (reduce ? 0.34 : 0.58) * k;      // gravidade / tick
+      const VMAX = (reduce ? 13 : 21) * k;          // velocidade terminal
+      const REST = 0.72;                            // rebote nas paredes
+      const VX0  = (reduce ? 1.4 : 2.8) * k;        // impulso lateral inicial
+
+      const balls = [];
+      const N = reduce ? 4 : 8;                      // total (metade por faixa)
+      function respawn(s, initial) {
+        s.x  = s.lane.x0 + Math.random() * (s.lane.x1 - s.lane.x0 - d);
+        s.y  = -d - Math.random() * (initial ? h : h * 0.6);
+        s.vx = (Math.random() * 2 - 1) * VX0;
+        s.vy = Math.random() * 2 * k;
+      }
+      for (let i = 0; i < N; i++) {
+        const node = el('span', 'race-ball', { width: d + 'px', height: d + 'px' });
+        set.appendChild(node);
+        const s = { node, lane: lanes[i % 2] };
+        respawn(s, true);
+        balls.push(s);
+      }
+
+      // Loop de física capado a ~30fps (poupa encoder no OBS).
+      const TICK = 1000 / 30;
+      let last = 0, raf = 0;
+      function step(t) {
+        raf = requestAnimationFrame(step);
+        if (t - last < TICK) return;
+        last = t;
+        for (const s of balls) {
+          s.vy = Math.min(s.vy + G, VMAX);
+          s.x += s.vx; s.y += s.vy;
+          if (s.x < s.lane.x0)         { s.x = s.lane.x0;         s.vx =  Math.abs(s.vx) * REST + 0.1 * k; }
+          if (s.x + d > s.lane.x1)     { s.x = s.lane.x1 - d;     s.vx = -Math.abs(s.vx) * REST - 0.1 * k; }
+          if (s.y > h + d)             { respawn(s, false); }
+          s.node.style.transform = `translate3d(${s.x}px, ${s.y}px, 0)`;
+        }
+      }
+      raf = requestAnimationFrame(step);
+      set._cleanup = () => cancelAnimationFrame(raf);
+      return set;
+    },
+
+    // ══ CLÁSSICO — palavras dando a volta pelo perímetro da câmera ══
+    // offset-path traça o retângulo arredondado; cada palavra entra defasada
+    // pra cobrir o loop uniformemente. Ouro, discreto.
+    letters() {
+      const set = el('div', 'deco-set');
+      const { w, h } = frameRect();
+      const r = Math.min(w, h) * 0.05;
+      const m = Math.min(w, h) * 0.04;              // orbita levemente pra fora
+      const path = perimeterPath(w, h, r, m);
+      const dur  = reduce ? 90 : 54;                 // segundos por volta
+      const N = GUESS_WORDS.length;
+      GUESS_WORDS.forEach((word, i) => {
+        set.appendChild(el('span', 'pword', {
+          'offset-path': `path('${path}')`,
+          'animation': `perimeter ${dur}s linear infinite`,
+          'animation-delay': (-(i / N) * dur).toFixed(2) + 's'
+        }, word));
+      });
+      return set;
+    },
+
+    // ══ ROLETA — reel gira, desacelera, um prêmio para no centro, fica ══
+    // dourado e ABRE (burst de partículas), depois recomeça. Loop de sorteio.
+    // Tudo acontece na faixa ABAIXO da moldura (nunca sobre o rosto).
+    draw() {
+      const set = el('div', 'deco-set');
+      // reel de fundo (ambiente, discreto)
+      const reel = buildTrack(
+        { side: 'bottom', val: '-5vmin' },   /* posição do reel: ancorada (não escala) */
+        () => el('span', 'reelbox', null, SVG.gift),
+        4, reduce ? '24s' : '13s'
+      );
+      reel.classList.add('reel-ambient');
+      set.appendChild(reel);
+      set.appendChild(el('span', 'reel-pointer'));
+
+      const stage = el('div', 'win-stage');
+      set.appendChild(stage);
+
+      const timers = [];
+      let alive = true;
+      const wait = (fn, ms) => timers.push(setTimeout(fn, ms));
+
+      function burst() {
+        const N = reduce ? 8 : 14;
+        for (let i = 0; i < N; i++) {
+          const ang  = (i / N) * Math.PI * 2 + Math.random() * 0.35;
+          const dist = 5 + Math.random() * 4.5;
+          const sp = el('span', 'spark');
+          stage.appendChild(sp);
+          sp.animate(
+            [{ transform: 'translate(0,0) scale(1)', opacity: 1 },
+             { transform: `translate(${(Math.cos(ang)*dist*DS).toFixed(2)}vmin, ${(Math.sin(ang)*dist*DS).toFixed(2)}vmin) scale(.2)`, opacity: 0 }],
+            { duration: 620 + Math.random() * 320, easing: 'cubic-bezier(.2,.6,.2,1)', fill: 'forwards' }
+          );
+          wait(() => sp.remove(), 1000);
+        }
+      }
+
+      function drawOnce() {
+        if (!alive) return;
+        const box = el('span', 'winbox', null, SVG.gift);
+        stage.appendChild(box);
+        // entra pela direita e DESACELERA até parar no centro
+        const slide = box.animate(
+          [{ transform: `translateX(${(16*DS).toFixed(2)}vmin) scale(.82)`, opacity: .25 },
+           { transform: 'translateX(0) scale(1)',        opacity: 1 }],
+          { duration: reduce ? 1400 : 1000, easing: 'cubic-bezier(.12,.72,.2,1)', fill: 'forwards' }
+        );
+        slide.onfinish = () => {
+          if (!alive) return;
+          box.classList.add('won');                    // fica dourado
+          box.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.22)' }, { transform: 'scale(1.1)' }],
+                      { duration: 300, easing: 'ease-out', fill: 'forwards' });
+          wait(() => {
+            if (!alive) return;
+            burst();                                     // ABRE / explode prêmio
+            box.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1.32)' }],
+                        { duration: 260, easing: 'ease-out', fill: 'forwards' });
+            wait(() => box.animate([{ opacity: 1 }, { opacity: 0 }],
+                        { duration: 380, fill: 'forwards' }).finished.then(() => box.remove()).catch(()=>{}), 360);
+          }, reduce ? 460 : 340);
+        };
+        wait(drawOnce, reduce ? 3600 : 2700);            // recomeça o giro
+      }
+      drawOnce();
+
+      set._cleanup = () => { alive = false; timers.forEach(clearTimeout); };
+      return set;
+    },
+
+    // ══ ARENA — várias armas (espada/arco/cajado) espalhadas nas bordas ══
+    weapons() {
+      const set = el('div', 'deco-set');
+      const kinds = [SVG.sword, SVG.bow, SVG.staff];
+      // [lado, top, offset, largura, altura, rotação(deg), delay(s), tipo]
+      // offset/largura/altura em unidades de deco (uv => calc(n*--u)); ?ds escala.
+      const specs = [
+        ['left',  '12%', 8.4, 6.4, 11.6, '-8deg', 0.0, 0],
+        ['left',  '40%', 9.4, 9.0, 11.6,  '5deg', 0.9, 1],
+        ['left',  '68%', 8.4, 6.4, 11.6,  '7deg', 1.8, 2],
+        ['left',  '90%', 7.6, 5.8, 10.2, '-5deg', 0.4, 0],
+        ['right', '11%', 8.4, 6.4, 11.6,  '6deg', 0.6, 2],
+        ['right', '38%', 9.4, 9.0, 11.6, '-6deg', 1.4, 1],
+        ['right', '64%', 8.4, 6.4, 11.6, '-9deg', 0.2, 0],
+        ['right', '89%', 7.6, 5.8, 10.2,  '8deg', 1.1, 2],
+      ];
+      specs.forEach(([side, top, off, ww, hh, rot, delay, ki]) => {
+        set.appendChild(el('span', 'weapon', {
+          [side]: '-' + off + 'vmin', top: top, width: uv(ww), height: uv(hh),
+          '--rot': rot, 'animation-delay': (-delay) + 's',
+          'animation-duration': (3.2 + (ki * 0.5)) + 's'
+        }, kinds[ki]));
+      });
+      return set;
+    },
+
+    // ══ ULTIMATO — Ferumbras (sprite REAL) no canto inferior direito ══
+    // lançando magia pra esquerda, em loop. Brasas de ambiente na base.
+    // Projétil cruza rente à base (bem abaixo do rosto). Recuo do boss
+    // sincronizado com o disparo.
+    boss() {
+      const set = el('div', 'deco-set');
+
+      // brasas ambientes ao longo da base (discretas)
+      const N = reduce ? 5 : 8;
+      for (let i = 0; i < N; i++) {
+        const size = uv((0.8 + Math.random() * 1.3).toFixed(2));
+        set.appendChild(el('span', 'ember', {
+          bottom: '-2.5vmin',                            // posição: base (não escala)
+          left: (6 + (i / (N - 1)) * 74).toFixed(1) + '%',
+          width: size, height: size,
+          'animation-duration': (reduce ? 6 : (2.4 + Math.random() * 1.8)).toFixed(2) + 's',
+          'animation-delay': (-Math.random() * 3).toFixed(2) + 's'
+        }));
+      }
+
+      // boss no canto inferior direito (virado pra oeste = pra esquerda)
+      const boss = el('div', 'ferumbras');
+      set.appendChild(boss);
+
+      const timers = [];
+      let alive = true;
+      const wait = (fn, ms) => timers.push(setTimeout(fn, ms));
+
+      function cast() {
+        if (!alive) return;
+        const { w } = frameRect();
+        boss.classList.add('casting');
+        wait(() => boss.classList.remove('casting'), 520);
+
+        const p = el('span', 'fproj');
+        p.style.bottom = '3vmin';                        // posição: rente à base, não no rosto (não escala)
+        p.style.left   = (w * 0.9) + 'px';               // sai do canto inferior direito (px: cruza a moldura)
+        set.appendChild(p);
+        const dur = reduce ? 2600 : 1900;
+        const travel = w * 0.98;                         // cruza e sai pela esquerda
+        const anim = p.animate(
+          [{ transform: 'translateX(0) scale(.5)',                     opacity: 0 },
+           { transform: `translateX(-${(w*0.06).toFixed(1)}px) scale(1)`, opacity: .95, offset: .1 },
+           { transform: `translateX(-${(travel*0.9).toFixed(1)}px) scale(1)`, opacity: .95, offset: .86 },
+           { transform: `translateX(-${travel.toFixed(1)}px) scale(.45)`, opacity: 0 }],
+          { duration: dur, easing: 'linear', fill: 'forwards' }
+        );
+        anim.finished.then(() => p.remove()).catch(() => {});
+        wait(cast, dur + (reduce ? 900 : 720));          // loop de disparo
+      }
+      wait(cast, 500);
+
+      set._cleanup = () => { alive = false; timers.forEach(clearTimeout); };
+      return set;
+    },
+
+    // ══ SORTEIO — tickets flutuando nas laterais + confete (inalterado) ══
+    tickets() {
+      const set = el('div', 'deco-set');
+      const mk = (side, top, rot, dur, delay) => el('span', 'ticket', {
+        [side]: '-9.4vmin', top: top, '--rot': rot,   /* posição lateral: ancorada (não escala) */
+        'animation-duration': dur, 'animation-delay': delay
+      }, SVG.ticket);
+      set.appendChild(mk('left',  '24%', '-8deg', reduce ? '6s' : '3.6s', '0s'));
+      set.appendChild(mk('left',  '62%',  '6deg', reduce ? '6s' : '4.2s', '-1.5s'));
+      set.appendChild(mk('right', '30%',  '9deg', reduce ? '6s' : '3.9s', '-0.7s'));
+      set.appendChild(mk('right', '66%', '-5deg', reduce ? '6s' : '4.5s', '-2.1s'));
+      // confete descendo perto do topo
+      for (let i = 0; i < 8; i++) {
+        set.appendChild(el('span', 'confetti', {
+          top: '-1vmin',                                // posição: topo (não escala)
+          left: (10 + (i / 7) * 80).toFixed(1) + '%',
+          'animation-duration': (reduce ? 6 : (3 + Math.random() * 2)).toFixed(2) + 's',
+          'animation-delay': (-Math.random() * 4).toFixed(2) + 's',
+          opacity: .7
+        }));
+      }
+      return set;
+    },
+
+    // ══ TRIVIA — chips A/B/C/D nas laterais + interrogação (inalterado) ══
+    quiz() {
+      const set = el('div', 'deco-set');
+      const mk = (letter, side, top, hot, delay) => el('span', 'chip' + (hot ? ' hot' : ''), {
+        [side]: '-8vmin', top: top, 'animation-delay': delay   /* posição lateral: ancorada (não escala) */
+      }, letter);
+      set.appendChild(mk('A', 'left',  '22%', false, '0s'));
+      set.appendChild(mk('B', 'left',  '60%', true,  '-1s'));
+      set.appendChild(mk('C', 'right', '30%', false, '-0.5s'));
+      set.appendChild(mk('D', 'right', '66%', false, '-1.6s'));
+      set.appendChild(el('span', 'qmark', { top: '-9.5vmin', left: '1%' }, '?'));   /* posição: topo (não escala) */
+      return set;
+    }
+  };
+
+  /* ════════════════════════════════════════════════════════════════════
+     CICLO — troca de modo: cor + ticker + decoração, sincronizados.
+     ════════════════════════════════════════════════════════════════════ */
+  const root    = document.documentElement;
+  const tkMode  = document.getElementById('tk-mode');
+  const decoBox = document.getElementById('deco');
+  let idx = -1;
+  let currentSet = null;
+  let currentDeco = null;               // pra rebuild no resize
+
+  function applyColor(hex) {
+    const c = hexToRgb(hex);
+    root.style.setProperty('--mc', hex);
+    root.style.setProperty('--mc-glow', rgba(c, 0.45));
+    root.style.setProperty('--mc-soft', rgba(c, 0.16));
+    root.style.setProperty('--mc-line', rgba(c, 0.62));
+    root.style.setProperty('--mc-deep', deepen(c, 0.55));
+  }
+
+  function swapTicker(name) {
+    if (!tkMode.animate) { tkMode.textContent = name; return; }
+    tkMode.animate(
+      [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-6px)' }],
+      { duration: 170, easing: 'ease-in', fill: 'forwards' }
+    ).finished.then(() => {
+      tkMode.textContent = name;
+      tkMode.animate(
+        [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'translateY(0)' }],
+        { duration: 240, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }
+      );
+    }).catch(() => { tkMode.textContent = name; });
+  }
+
+  function buildDeco(type) {
+    const prev = currentSet;
+    if (prev) {
+      if (prev._cleanup) { try { prev._cleanup(); } catch (e) {} }  // para loops JS
+      prev.classList.remove('in');
+      const gone = prev;
+      setTimeout(() => { if (gone && gone.parentNode) gone.parentNode.removeChild(gone); }, 520);
+    }
+    const set = (DECO[type] || DECO.letters)();
+    decoBox.appendChild(set);
+    // força reflow antes de ativar a transição de opacidade
+    void set.offsetWidth;
+    set.classList.add('in');
+    currentSet = set;
+    currentDeco = type;
+  }
+
+  function next() {
+    idx = (idx + 1) % MODES.length;
+    const m = MODES[idx];
+    applyColor(m.color);   // transição de cor (900ms via CSS)
+    swapTicker(m.name);    // texto da aba (fade/slide)
+    buildDeco(m.deco);     // decoração (crossfade)
+  }
+
+  // Rebuild da decoração no resize (decos com geometria/física medem a
+  // moldura em px). Debounce leve; raro no OBS mas mantém tudo alinhado.
+  let rz = 0;
+  addEventListener('resize', () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => { if (currentDeco) buildDeco(currentDeco); }, 250);
+  });
+
+  // Boot — ?mode=KEY trava num modo só (sem ciclar). Ex.: ?mode=arena
+  const lockKey = params.get('mode');
+  const lockIdx = lockKey ? MODES.findIndex(m => m.key === lockKey) : -1;
+  if (lockIdx >= 0) {
+    idx = lockIdx - 1;
+    next();               // fixa nesse modo, sem setInterval
+  } else {
+    next();
+    setInterval(next, CYCLE_MS);
+  }
+})();
+</script>
+</body>
+</html>

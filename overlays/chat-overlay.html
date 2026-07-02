@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TOLOFPS Chat Overlay</title>
+<style>
+  :root{
+    --bg:#08120a; --lime:#9ee60a; --gold:#ffd700; --ink:#eaf6df;
+    --card:rgba(6,14,8,.72);
+    --fs:19px;            /* tamanho base, escalavel via ?fs= */
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{
+    width:100%;height:100%;
+    background:rgba(0,0,0,0);        /* transparente no OBS */
+    overflow:hidden;
+    color:var(--ink);
+    font-family:'Segoe UI','Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  #wrap{
+    position:fixed;inset:0;
+    display:flex;flex-direction:column;justify-content:flex-end;
+    gap:7px;padding:10px 8px;
+    pointer-events:none;              /* overlay nunca pega clique */
+  }
+  .head{
+    align-self:flex-start;
+    display:flex;align-items:center;gap:7px;
+    background:rgba(6,14,8,.82);
+    border:1.5px solid var(--lime);
+    color:var(--lime);
+    font-weight:800;font-size:14px;letter-spacing:.6px;text-transform:uppercase;
+    padding:5px 13px;border-radius:999px;
+    box-shadow:0 2px 12px rgba(0,0,0,.45);
+    text-shadow:0 0 8px rgba(158,230,10,.35);
+  }
+  .head .dot{
+    width:9px;height:9px;border-radius:50%;background:var(--lime);
+    box-shadow:0 0 8px var(--lime);animation:pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse{50%{opacity:.35;transform:scale(.85)}}
+
+  #chat{
+    display:flex;flex-direction:column;justify-content:flex-end;gap:6px;
+    overflow:hidden;
+    /* mensagens antigas desvanecem ao sair pelo topo */
+    -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 46px);
+            mask-image:linear-gradient(to bottom,transparent 0,#000 46px);
+  }
+  .msg{
+    background:var(--card);
+    border-left:3px solid var(--accent,#9ee60a);
+    border-radius:10px;
+    padding:7px 11px 7px 9px;
+    font-size:var(--fs);line-height:1.28;
+    word-wrap:break-word;overflow-wrap:anywhere;
+    box-shadow:0 2px 9px rgba(0,0,0,.4);
+    contain:content;
+    opacity:0;transform:translateX(16px);
+    transition:opacity .22s ease-out,transform .22s cubic-bezier(.22,1,.36,1);
+    will-change:opacity,transform;
+  }
+  .msg.in{opacity:1;transform:translateX(0)}
+  .badges{margin-right:1px}
+  .badge{font-size:.82em;margin-right:2px;vertical-align:1px}
+  .name{font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.55)}
+  .sep{opacity:.45;margin:0 4px 0 1px}
+  .text{font-weight:500}
+  .emote{height:1.15em;vertical-align:-.28em;margin:0 1px}
+
+  #status{
+    position:fixed;right:8px;bottom:6px;
+    font-size:11px;color:#5a6b57;opacity:.0;transition:opacity .3s;
+  }
+  #wrap[data-state="error"] #status,
+  #wrap[data-state="offline"] #status{opacity:.7}
+</style>
+</head>
+<body>
+  <div id="wrap" data-state="loading">
+    <div class="head"><span class="dot"></span>Chat da Live</div>
+    <div id="chat"></div>
+    <div id="status"></div>
+  </div>
+<script>
+(() => {
+  'use strict';
+  const params = new URLSearchParams(location.search);
+  const channel = (params.get('channel') || 'tolofps').replace(/[^a-z0-9_]/gi,'').toLowerCase();
+  const MAX = Number(params.get('max')) || 40;
+  const fs = params.get('fs');
+  if (fs) document.documentElement.style.setProperty('--fs', (parseFloat(fs)||19)+'px');
+
+  const wrap = document.getElementById('wrap');
+  const chat = document.getElementById('chat');
+  const statusEl = document.getElementById('status');
+
+  const PALETTE = ['#9ee60a','#ffd700','#5ad1ff','#ff8ad1','#b98cff','#7CFF9B','#ffa657','#6ee7ff'];
+  const BADGE = {broadcaster:'👑',moderator:'🗡️',vip:'💎',subscriber:'⭐',founder:'⭐',premium:'🔷',partner:'✔️',staff:'🛠️','global_mod':'🗡️'};
+
+  const HEX = /^#[0-9a-fA-F]{6}$/;
+  function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function colorFromName(n){let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))>>>0;return PALETTE[h%PALETTE.length];}
+
+  function renderBadges(tag){
+    if(!tag) return '';
+    let out='';
+    for(const b of tag.split(',')){const k=b.split('/')[0];if(BADGE[k])out+=`<span class="badge" title="${escapeHtml(k)}">${BADGE[k]}</span>`;}
+    return out;
+  }
+
+  function renderText(text,emotesTag){
+    const chars=Array.from(text);
+    if(!emotesTag) return escapeHtml(text);
+    const ranges=[];
+    for(const part of emotesTag.split('/')){
+      const idx=part.indexOf(':');if(idx===-1)continue;
+      const id=part.slice(0,idx);
+      for(const r of part.slice(idx+1).split(',')){
+        const [s,e]=r.split('-').map(Number);
+        if(Number.isInteger(s)&&Number.isInteger(e))ranges.push({id,s,e});
+      }
+    }
+    ranges.sort((a,b)=>a.s-b.s);
+    let out='',i=0;
+    for(const r of ranges){
+      if(r.s<i||r.s>=chars.length)continue;
+      if(r.s>i)out+=escapeHtml(chars.slice(i,r.s).join(''));
+      const alt=escapeHtml(chars.slice(r.s,r.e+1).join(''));
+      const id=encodeURIComponent(r.id);
+      out+=`<img class="emote" loading="lazy" decoding="async" alt="${alt}" title="${alt}" src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/1.0">`;
+      i=r.e+1;
+    }
+    if(i<chars.length)out+=escapeHtml(chars.slice(i).join(''));
+    return out;
+  }
+
+  function addMessage({displayName,color,badges,emotes,text}){
+    const name=String(displayName||'').slice(0,25);
+    const c=HEX.test(color||'')?color:colorFromName(name);
+    const el=document.createElement('div');
+    el.className='msg';
+    el.style.setProperty('--accent',c);
+    el.innerHTML=
+      `<span class="badges">${renderBadges(badges)}</span>`+
+      `<span class="name" style="color:${c}">${escapeHtml(name)}</span>`+
+      `<span class="sep">:</span>`+
+      `<span class="text">${renderText(String(text||''),emotes)}</span>`;
+    chat.appendChild(el);
+    while(chat.children.length>MAX)chat.removeChild(chat.firstChild);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('in')));
+  }
+
+  function setState(s){wrap.dataset.state=s;statusEl.textContent=s==='online'?'':('chat: '+s);}
+
+  // ---- IRC anonimo (somente leitura) ----
+  function parseTags(s){
+    const o={};
+    for(const kv of s.split(';')){
+      const i=kv.indexOf('=');
+      if(i===-1)o[kv]='';
+      else o[kv.slice(0,i)]=kv.slice(i+1).replace(/\\s/g,' ').replace(/\\:/g,';').replace(/\\\\/g,'\\');
+    }
+    return o;
+  }
+  const PRIV=/^:([^ !]+)![^ ]* PRIVMSG #[^ ]+ :([\s\S]*)$/;
+  function handleLine(line){
+    let tags={},rest=line;
+    if(line[0]==='@'){const sp=line.indexOf(' ');tags=parseTags(line.slice(1,sp));rest=line.slice(sp+1);}
+    if(rest.startsWith('PING')){return 'PONG';}
+    const m=rest.match(PRIV);
+    if(!m)return;
+    addMessage({displayName:tags['display-name']||m[1],color:tags['color']||'',badges:tags['badges']||'',emotes:tags['emotes']||'',text:m[2]});
+  }
+
+  let ws,retry=0;
+  function connect(){
+    setState(retry?'reconnecting':'loading');
+    ws=new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    ws.onopen=()=>{
+      retry=0;
+      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+      ws.send('NICK justinfan'+(10000+Math.floor(Math.random()*89999)));
+      ws.send('JOIN #'+channel);
+      setState('online');
+    };
+    ws.onmessage=(ev)=>{
+      for(const line of String(ev.data).split('\r\n')){
+        if(!line)continue;
+        if(handleLine(line)==='PONG')ws.send('PONG :tmi.twitch.tv');
+      }
+    };
+    ws.onclose=()=>{setState('offline');retry++;setTimeout(connect,Math.min(1000*retry,8000));};
+    ws.onerror=()=>{setState('error');try{ws.close();}catch(e){}};
+  }
+
+  // ---- Demo ----
+  function demo(){
+    setState('online');
+    const F=[
+      {displayName:'Grimoriense',color:'#9ee60a',badges:'broadcaster/1',text:'salve rapaziada! bora de RubinOT hoje 🔥'},
+      {displayName:'Pablodruid',color:'#5ad1ff',badges:'moderator/1',text:'boa live mano, som ta otimo'},
+      {displayName:'ZezinhoTibia',color:'',badges:'subscriber/6',text:'o CLAIMED ta on hoje?'},
+      {displayName:'MariaGamer',color:'#ff8ad1',badges:'vip/1',text:'primeira vez aqui, curtindo demais'},
+      {displayName:'Xurupita',color:'#ffd700',badges:'subscriber/12',text:'Kappa deu bom',emotes:'25:0-4'},
+      {displayName:'DruidBR',color:'#b98cff',badges:'',text:'sobe o volume do jogo ai chefe'},
+      {displayName:'Kelvin_pvp',color:'',badges:'',text:'esse boss ali é o Ferumbras???'},
+      {displayName:'AnaClara',color:'#7CFF9B',badges:'',text:'tem sorteio no chat hoje?'},
+    ];
+    let i=0;
+    addMessage(F[i++]);
+    setInterval(()=>addMessage(F[i++%F.length]),2000);
+  }
+
+  if(params.has('demo'))demo();
+  else connect();
+})();
+</script>
+</body>
+</html>
